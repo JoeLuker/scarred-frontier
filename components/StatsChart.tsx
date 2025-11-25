@@ -32,29 +32,44 @@ export const StatsChart: React.FC<StatsChartProps> = ({ hexes }) => {
   }
 
   return (
-    <div className="w-full h-64">
-      <ResponsiveContainer width="100%" height="100%">
-        <PieChart>
-          <Pie
-            data={data}
-            cx="50%"
-            cy="50%"
-            innerRadius={60}
-            outerRadius={80}
-            paddingAngle={5}
-            dataKey="value"
-          >
-            {data.map((entry, index) => (
-              <Cell key={`cell-${index}`} fill={TERRAIN_COLORS[entry.name as TerrainType] || '#8884d8'} />
-            ))}
-          </Pie>
-          <Tooltip 
-            contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', color: '#f1f5f9' }}
-            itemStyle={{ color: '#f1f5f9' }}
-          />
-        </PieChart>
-      </ResponsiveContainer>
-      <div className="text-center text-xs text-slate-400 mt-2">Explored Terrain Distribution</div>
+    <div className="w-full h-full flex flex-col">
+      <div className="h-48">
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie
+              data={data}
+              cx="50%"
+              cy="50%"
+              innerRadius={50}
+              outerRadius={70}
+              paddingAngle={5}
+              dataKey="value"
+            >
+              {data.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={TERRAIN_COLORS[entry.name as TerrainType] || '#8884d8'} />
+              ))}
+            </Pie>
+            <Tooltip
+              contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', color: '#f1f5f9' }}
+              itemStyle={{ color: '#f1f5f9' }}
+            />
+          </PieChart>
+        </ResponsiveContainer>
+      </div>
+      <div className="text-center text-xs text-slate-400 mb-2">Explored Terrain Distribution</div>
+      <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 px-2">
+        {data.map((entry) => (
+          <div key={entry.name} className="flex items-center gap-1.5">
+            <div
+              className="w-2.5 h-2.5 rounded-sm"
+              style={{ backgroundColor: TERRAIN_COLORS[entry.name as TerrainType] || '#8884d8' }}
+            />
+            <span className="text-xs text-slate-400">
+              {entry.name} <span className="text-slate-500">({entry.value})</span>
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 };
