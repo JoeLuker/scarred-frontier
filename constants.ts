@@ -1,5 +1,25 @@
-
 import { TerrainType, TerrainElement, PartySpeed, ElementalOverlay } from './types';
+
+// --- WORLD CONFIGURATION ---
+// The Single Source of Truth for Map Dimensions
+export const MAP_CONFIG = {
+  HEX_SIZE: 50,               // Pixel radius of a single micro-hex
+  SECTOR_SIZE: 4,             // Radius of a generated sector (in hexes)
+  SECTOR_SPACING: 5,          // Distance between sector centers (in hexes). K=5 for Radius 4 (Dist 10)
+  WORLD_RADIUS_SECTORS: 6,    // How many sectors out from center to generate
+  BRIDGE_RADIUS: 2,           // Width of land bridges (radius)
+};
+
+// Derived Visual Config
+// The visual scale (radius in hexes) of the Placeholders.
+// Scaled to cover the extents of a Pointy Top hex cluster.
+export const VISUAL_CONFIG = {
+  SECTOR_SCALE: MAP_CONFIG.SECTOR_SIZE * Math.sqrt(3),
+  // Padding for the placeholder visual to ensure it encompasses the jagged edges of the terrain
+  PLACEHOLDER_PAD: 0.85 
+};
+
+// --- GAME RULES ---
 
 // Speed category degradation for Difficult terrain
 // 50->40, 40->30, 30->20, 20->15, 15->15

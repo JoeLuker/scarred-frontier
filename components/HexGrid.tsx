@@ -1,15 +1,12 @@
-
 import React, { useRef, useEffect, useCallback, useMemo } from 'react';
 import { HexData, TerrainType, ElementalOverlay } from '../types';
-import { TERRAIN_COLORS, TERRAIN_PATHS, OVERLAY_COLORS } from '../constants';
-import { SECTOR_SCALE } from '../services/mapData';
+import { TERRAIN_COLORS, TERRAIN_PATHS, OVERLAY_COLORS, MAP_CONFIG, VISUAL_CONFIG } from '../constants';
+import { hexToPixel, pixelToHex, pixelToFlatHex, axialRound } from '../services/geometry';
 
 interface HexGridProps {
   hexes: HexData[];
   onHexClick: (hex: HexData) => void;
 }
-
-const HEX_SIZE = 50;
 
 // --- Color Interpolation Helper ---
 const hexToRgb = (hex: string) => {
@@ -46,46 +43,6 @@ export const HexGrid: React.FC<HexGridProps> = ({ hexes, onHexClick }) => {
     state.current.hexes = hexes;
   }, [hexes]);
 
-  // --- Math Helpers ---
-
-  // POINTY TOP: For individual terrain hexes
-  const hexToPixelPointy = (q: number, r: number) => {
-    const x = HEX_SIZE * Math.sqrt(3) * (q + r/2);
-    const y = HEX_SIZE * (3 / 2 * r);
-    return { x, y };
-  };
-
-  const pixelToHexPointy = (x: number, y: number) => {
-    const q = (Math.sqrt(3)/3 * x - 1/3 * y) / HEX_SIZE;
-    const r = (2/3 * y) / HEX_SIZE;
-    return axialRound(q, r);
-  };
-
-  // FLAT TOP: For sector placeholders (sectors tile as flat-top)
-  const hexToPixelFlat = (q: number, r: number) => {
-    const x = HEX_SIZE * (3 / 2 * q);
-    const y = HEX_SIZE * Math.sqrt(3) * (r + q/2);
-    return { x, y };
-  };
-
-  const pixelToHexFlat = (x: number, y: number) => {
-    const q = (2/3 * x) / HEX_SIZE;
-    const r = (-1/3 * x + Math.sqrt(3)/3 * y) / HEX_SIZE;
-    return axialRound(q, r);
-  };
-
-  const axialRound = (x: number, y: number) => {
-    const xgrid = Math.round(x);
-    const ygrid = Math.round(y);
-    const xrem = x - xgrid;
-    const yrem = y - ygrid;
-    if (Math.abs(xrem) >= Math.abs(yrem)) {
-      return { q: xgrid + Math.round(xrem + 0.5 * yrem), r: ygrid };
-    } else {
-      return { q: xgrid, r: ygrid + Math.round(yrem + 0.5 * xrem) };
-    }
-  };
-
   // --- Render Logic ---
 
   const drawHex = (
@@ -95,11 +52,11 @@ export const HexGrid: React.FC<HexGridProps> = ({ hexes, onHexClick }) => {
     hex: HexData,
     scale: number = 1
   ) => {
-    const currentSize = HEX_SIZE * scale;
+    const currentSize = MAP_CONFIG.HEX_SIZE * scale;
     const isPlaceholder = !!hex.isSectorPlaceholder;
 
     // Terrain Hexes: Pointy Top (30 degrees)
-    // Sector Placeholders: Flat Top (0 degrees) - sectors tile as flat-top to form pointy-top world
+    // Sector Placeholders: Flat Top (0 degrees)
     const angleOffset = isPlaceholder ? 0 : 30;
 
     ctx.beginPath();
@@ -127,8 +84,8 @@ export const HexGrid: React.FC<HexGridProps> = ({ hexes, onHexClick }) => {
             if (effectColor) {
                 const eRgb = hexToRgb(effectColor);
                 // Strength determines influence. 
-                // Increased weight slightly to make sure "no visible change" is addressed
-                const w = effect.strength * 1.2; 
+                // Increased weight (x3) to make sure visual is distinct
+                const w = effect.strength * 3.0; 
                 
                 r += eRgb.r * w;
                 g += eRgb.g * w;
@@ -149,7 +106,6 @@ export const HexGrid: React.FC<HexGridProps> = ({ hexes, onHexClick }) => {
     // Smooth joins for better grid aesthetic
     ctx.lineJoin = 'round';
     ctx.lineWidth = 1 * scale;
-    // Use a slightly lighter border for "selected" or heavily effected hexes could be an option, keeping it subtle for now
     ctx.strokeStyle = scale > 1 ? 'rgba(255,255,255,0.2)' : '#1e293b'; 
     ctx.stroke();
 
@@ -181,13 +137,13 @@ export const HexGrid: React.FC<HexGridProps> = ({ hexes, onHexClick }) => {
         if (scale > 1 || currentZoom > 0.6) {
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
-            const labelSize = scale > 1 ? 32 : Math.max(10, HEX_SIZE * 0.25);
+            const labelSize = scale > 1 ? 32 : Math.max(10, MAP_CONFIG.HEX_SIZE * 0.25);
             ctx.font = `${labelSize}px monospace`;
             ctx.fillStyle = "rgba(255,255,255,0.4)";
             const label = isPlaceholder
                 ? `S (${Math.floor(hex.coordinates.x)},${Math.floor(hex.coordinates.y)})`
                 : `${hex.coordinates.x},${hex.coordinates.y}`;
-            ctx.fillText(label, x, y + (HEX_SIZE * 0.65 * scale));
+            ctx.fillText(label, x, y + (MAP_CONFIG.HEX_SIZE * 0.65 * scale));
         }
     }
   };
@@ -220,7 +176,7 @@ export const HexGrid: React.FC<HexGridProps> = ({ hexes, onHexClick }) => {
     ctx.translate(centerX + camX, centerY + camY);
     ctx.scale(zoom, zoom);
 
-    const margin = HEX_SIZE * SECTOR_SCALE * 3; 
+    const margin = MAP_CONFIG.HEX_SIZE * VISUAL_CONFIG.SECTOR_SCALE * 3; 
     const viewRect = {
         left: -centerX / zoom - camX / zoom - margin,
         right: (rect.width - centerX) / zoom - camX / zoom + margin,
@@ -229,25 +185,22 @@ export const HexGrid: React.FC<HexGridProps> = ({ hexes, onHexClick }) => {
     };
 
     state.current.hexes.forEach(hex => {
-        // Use appropriate coordinate system: Flat Top for sectors, Pointy Top for terrain
-        const pixel = hex.isSectorPlaceholder
-            ? hexToPixelFlat(hex.coordinates.x, hex.coordinates.y)
-            : hexToPixelPointy(hex.coordinates.x, hex.coordinates.y);
-
+        const pixel = hexToPixel(hex.coordinates.x, hex.coordinates.y);
+        
         if (
-            pixel.x > viewRect.left &&
-            pixel.x < viewRect.right &&
-            pixel.y > viewRect.top &&
+            pixel.x > viewRect.left && 
+            pixel.x < viewRect.right && 
+            pixel.y > viewRect.top && 
             pixel.y < viewRect.bottom
         ) {
             // Draw Sector Placeholders larger (+0.85) to encompass the Pointy Top cluster
-            const scale = hex.isSectorPlaceholder ? SECTOR_SCALE + 0.85 : 1;
-
+            const scale = hex.isSectorPlaceholder ? VISUAL_CONFIG.SECTOR_SCALE + VISUAL_CONFIG.PLACEHOLDER_PAD : 1;
+            
             drawHex(
-                ctx,
-                pixel.x,
-                pixel.y,
-                hex,
+                ctx, 
+                pixel.x, 
+                pixel.y, 
+                hex, 
                 scale
             );
         }
@@ -321,10 +274,10 @@ export const HexGrid: React.FC<HexGridProps> = ({ hexes, onHexClick }) => {
     const worldY = (mouseY - centerY - state.current.camera.y) / state.current.camera.zoom;
     
     // 1. Exact Hex Click (Standard Pointy Top Grid)
-    const hexCoords = pixelToHexPointy(worldX, worldY);
-    const exactHex = state.current.hexes.find(h =>
-        !h.isSectorPlaceholder &&
-        h.coordinates.x === hexCoords.q &&
+    const hexCoords = pixelToHex(worldX, worldY);
+    const exactHex = state.current.hexes.find(h => 
+        !h.isSectorPlaceholder && 
+        h.coordinates.x === hexCoords.q && 
         h.coordinates.y === hexCoords.r
     );
 
@@ -336,20 +289,28 @@ export const HexGrid: React.FC<HexGridProps> = ({ hexes, onHexClick }) => {
     // 2. Placeholder Click (Scaled Flat Top Geometric Hit Test)
     const clickedPlaceholder = state.current.hexes.find(h => {
         if (!h.isSectorPlaceholder) return false;
-
-        // Placeholders use Flat Top positioning
-        const pPixel = hexToPixelFlat(h.coordinates.x, h.coordinates.y);
-
+        
+        const pPixel = hexToPixel(h.coordinates.x, h.coordinates.y);
+        
         // Visual scale used in Render
-        const visualScale = SECTOR_SCALE + 0.85;
-
+        const visualScale = VISUAL_CONFIG.SECTOR_SCALE + VISUAL_CONFIG.PLACEHOLDER_PAD;
+        
         const localX = (worldX - pPixel.x) / visualScale;
         const localY = (worldY - pPixel.y) / visualScale;
-
-        // Flat Top hit test: q = 2/3 x, r = -1/3 x + sqrt(3)/3 y
-        const localHex = pixelToHexFlat(localX, localY);
-
-        return localHex.q === 0 && localHex.r === 0;
+        
+        // Use shared geometry
+        const localHex = pixelToFlatHex(worldX - pPixel.x, worldY - pPixel.y, visualScale);
+        
+        // Manual hit check for centered flat top at (0,0) in local space
+        // pixelToFlatHex already normalizes.
+        // We just need to check if the point falls inside a standard hexagon at 0,0
+        // Simplest: Check axial distance
+        
+        const q = (2/3 * (worldX - pPixel.x)) / (MAP_CONFIG.HEX_SIZE * visualScale);
+        const r = (-1/3 * (worldX - pPixel.x) + Math.sqrt(3)/3 * (worldY - pPixel.y)) / (MAP_CONFIG.HEX_SIZE * visualScale);
+        const hex = axialRound(q, r);
+        
+        return hex.q === 0 && hex.r === 0;
     });
 
     if (clickedPlaceholder) {
